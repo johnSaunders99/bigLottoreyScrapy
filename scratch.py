@@ -2,13 +2,6 @@ import requests, time
 import pandas as pd
 
 def fetch_dlt_with_prizes(game_no=85, province_id=0, page_size=30, max_pages=None):
-    """
-    Fetch Super Lotto history including:
-      - lotteryDrawNum, lotteryDrawTime
-      - lotteryUnsortDrawresult
-      - lotteryDrawResult (sorted)
-      - each prizeLevelList entry's stakeCount (中奖人数)
-    """
     url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
     records = []
     page_no = 1
@@ -37,9 +30,7 @@ def fetch_dlt_with_prizes(game_no=85, province_id=0, page_size=30, max_pages=Non
         resp.encoding = resp.apparent_encoding
         if resp.status_code == 403:
             print(f"第{page_no}页被拒绝，稍后重试…")
-            time.sleep(5)
             continue
-
         data_list = resp.json().get('value', {}).get('list', [])
         if not data_list:
             break
