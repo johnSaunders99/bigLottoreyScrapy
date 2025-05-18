@@ -22,11 +22,12 @@ TEMPLATE = '''
     .flex table { border-collapse: collapse; width: 100%; }
     table, th, td { border: 1px solid #888; padding: 4px; text-align: center; }
     th { background: #f0f0f0; }
+    .ticket { font-size: 1.2em; margin: 10px 0; }
   </style>
 </head>
 <body>
 <div class="container">
-  <h1>大乐透数据管理</h1>
+  <h1>大乐透微服务</h1>
   <form action="/update" method="post">
     <button type="submit">触发爬取/更新</button>
   </form>
@@ -46,14 +47,20 @@ TEMPLATE = '''
   </form>
   <br>
   <form action="/recommend" method="get">
-    幸运号码: <input type="text" name="lucky" placeholder="如 05，必须两位数字">
-    <button type="submit">推荐搭配</button>
+    幸运数字: <input type="text" name="lucky" placeholder="如 05，必须两位数字">
+    <button type="submit">生成号码</button>
   </form>
-  {% if message is defined %}
+  {% if ticket is defined %}
+    <div class="ticket">
+      推荐号码：
+      红球 {{ ticket.red|join(' ') }} + 蓝球 {{ ticket.blue|join(' ') }}
+    </div>
+  {% endif %}
+  {% if message is defined and ticket is not defined %}
     <p><strong>{{ message }}</strong></p>
   {% endif %}
 
-  {% if mode == 'single' and red_stats is defined and blue_stats is defined %}
+  {% if mode == 'single' and red_stats is defined %}
   <div class="flex">
     <div>
       <h2>红区出现频次</h2>
@@ -74,7 +81,7 @@ TEMPLATE = '''
       </table>
     </div>
   </div>
-  {% elif mode == 'pair' and red_stats is defined and blue_stats is defined %}
+  {% elif mode == 'pair' and red_stats is defined %}
   <div class="flex">
     <div>
       <h2>红区组合频次</h2>
@@ -90,30 +97,6 @@ TEMPLATE = '''
       <table>
         <tr><th>Pair</th><th>Count</th></tr>
         {% for pair, cnt in blue_stats %}
-        <tr><td>{{ pair }}</td><td>{{ cnt }}</td></tr>
-        {% endfor %}
-      </table>
-    </div>
-  </div>
-  {% endif %}
-
-  {% if rec_red is defined and rec_blue is defined %}
-  <h2>针对幸运号码 {{ lucky }} 的推荐搭配（按出现次数降序）</h2>
-  <div class="flex">
-    <div>
-      <h3>红区热配</h3>
-      <table>
-        <tr><th>Pair</th><th>Count</th></tr>
-        {% for pair, cnt in rec_red %}
-        <tr><td>{{ pair }}</td><td>{{ cnt }}</td></tr>
-        {% endfor %}
-      </table>
-    </div>
-    <div>
-      <h3>蓝区热配</h3>
-      <table>
-        <tr><th>Pair</th><th>Count</th></tr>
-        {% for pair, cnt in rec_blue %}
         <tr><td>{{ pair }}</td><td>{{ cnt }}</td></tr>
         {% endfor %}
       </table>
@@ -184,28 +167,36 @@ def stats():
     return render_template_string(TEMPLATE, mode=mode, sort_by=sort_by,
         red_stats=red_stats, blue_stats=blue_stats)
 
+
 @app.route('/recommend')
 def recommend():
     lucky = request.args.get('lucky')
+    # 验证格式
+    if not lucky or len(lucky) != 2 or not lucky.isdigit():
+        message = '请输入两位数字作为幸运数字，例如 05。'
+        return render_template_string(TEMPLATE, message=message, mode='')
     df = pd.read_csv(DATA_FILE, dtype=str)
-    # 红蓝区配对频次
-    red_pairs, blue_pairs = count_pair_frequency(df)
-    # 过滤包含幸运号码的配对
-    rec_red = red_pairs[red_pairs.index.str.contains(lucky, regex=False)]
-    rec_blue = blue_pairs[blue_pairs.index.str.contains(lucky, regex=False)]
-    # 转列表并取前10
-    rec_red = rec_red.sort_values(ascending=False).head(10).items()
-    rec_blue = rec_blue.sort_values(ascending=False).head(10).items()
-    message = f"基于号码 {lucky} 的推荐搭配如下："
-    return render_template_string(
-        TEMPLATE,
-        rec_red=rec_red,
-        rec_blue=rec_blue,
-        lucky=lucky,
-        message=message,
-        mode='',
-        sort_by=''
-    )
+    # 统计单号码频次
+    red_counts, blue_counts = count_number_frequency(df)
+    # 选择红球5个
+    reds = []
+    # 如果幸运在红区，先放入
+    if lucky in red_counts.index:
+        reds.append(lucky)
+    # 按出现次数降序选取其余
+    for num, _ in red_counts.sort_values(ascending=False).items():
+        if num not in reds and len(reds) < 5:
+            reds.append(num)
+    # 选择蓝球2个
+    blues = []
+    if lucky in blue_counts.index:
+        blues.append(lucky)
+    for num, _ in blue_counts.sort_values(ascending=False).items():
+        if num not in blues and len(blues) < 2:
+            blues.append(num)
+    ticket = {'red': reds, 'blue': blues}
+    return render_template_string(TEMPLATE, ticket=ticket, mode='', sort_by='')
+
 
 if __name__=='__main__':
     app.run()
