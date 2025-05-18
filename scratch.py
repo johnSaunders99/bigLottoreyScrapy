@@ -1,11 +1,16 @@
+# -*- coding: utf-8 -*-
 import requests, time
 import pandas as pd
 
-def fetch_dlt_with_prizes(game_no=85, province_id=0, page_size=30, max_pages=None):
+def fetch_dlt_with_prizes(game_no=85, province_id=0, page_size=30, max_pages=None, since_date=None):
     url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
     records = []
     page_no = 1
-
+    needUpdate = 0
+    enough = 0
+    if since_date is not None:
+        needUpdate = 1
+    splitColumns = ['红1', '红2', '红3', '红4', '红5', '蓝1', '蓝2']
     while True:
         params = {
             'gameNo': game_no,
@@ -29,13 +34,16 @@ def fetch_dlt_with_prizes(game_no=85, province_id=0, page_size=30, max_pages=Non
         resp = requests.get(url, params=params, timeout=10, headers=headers)
         resp.encoding = resp.apparent_encoding
         if resp.status_code == 403:
-            print(f"第{page_no}页被拒绝，稍后重试…")
-            continue
+            print(f"第{page_no}页被拒绝，请等待后稍后重试…")
+            break
         data_list = resp.json().get('value', {}).get('list', [])
         if not data_list:
             break
-        splitColumns = ['红1', '红2', '红3', '红4', '红5', '蓝1', '蓝2']
         for entry in data_list:
+            if needUpdate == 1 and since_date >= entry['lotteryDrawTime']:
+                enough = 1
+                # 更新数据日期大于等于已有数据,不插入更新且因为是倒序时间,后面同样都低于,直接结束
+                break
             drawRes = entry.get('lotteryDrawResult', '').replace('+', ' | ')
             rec = {
                 '期号': entry['lotteryDrawNum'],
@@ -50,8 +58,11 @@ def fetch_dlt_with_prizes(game_no=85, province_id=0, page_size=30, max_pages=Non
                 rec[f"{lvl_name}中奖人数"] = int(level['stakeCount'].replace(',', ''))
             records.append(rec)
 
+
         page_no += 1
         if max_pages and page_no > max_pages:
+            break
+        if needUpdate == 1 and enough == 1:
             break
 
     df = pd.DataFrame(records)
