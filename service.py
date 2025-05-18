@@ -26,7 +26,7 @@ TEMPLATE = '''
 </head>
 <body>
 <div class="container">
-  <h1>大乐透数据管理</h1>
+  <h1>大乐透快乐老家</h1>
   <form action="/update" method="post">
     <button type="submit">触发爬取/更新</button>
   </form>
