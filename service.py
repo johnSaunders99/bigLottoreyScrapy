@@ -1,6 +1,7 @@
 from flask import Flask, render_template_string, request
 import os
 import pandas as pd
+import random
 
 # 引入之前的抓取函数和分析函数
 from scratch import fetch_dlt_with_prizes
@@ -18,16 +19,14 @@ TEMPLATE = '''
   <title>大乐透微服务</title>
   <style>
     .container { width: 90%; margin: auto; }
-    .flex { display: flex; gap: 20px; }
-    .flex table { border-collapse: collapse; width: 100%; }
-    table, th, td { border: 1px solid #888; padding: 4px; text-align: center; }
-    th { background: #f0f0f0; }
-    .ticket { font-size: 1.2em; margin: 10px 0; }
+    .ticket-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+    .ticket-item { flex: 1 1 200px; border: 1px solid #888; padding: 8px; }
+    .ticket-number { font-size: 1.1em; margin-bottom: 6px; }
   </style>
 </head>
 <body>
 <div class="container">
-  <h1>大乐透微服务</h1>
+  <h1>大乐透数据管理</h1>
   <form action="/update" method="post">
     <button type="submit">触发爬取/更新</button>
   </form>
@@ -47,19 +46,31 @@ TEMPLATE = '''
   </form>
   <br>
   <form action="/recommend" method="get">
-    幸运数字: <input type="text" name="lucky" placeholder="如 05，必须两位数字">
+    幸运数字: <input type="text" name="lucky" placeholder="如 05，两位数字" required>
+    数量: <select name="count">
+      <option value="1">1</option>
+      <option value="5">5</option>
+      <option value="10">10</option>
+    </select>
     <button type="submit">生成号码</button>
   </form>
-  {% if ticket is defined %}
-    <div class="ticket">
-      推荐号码：
-      红球 {{ ticket.red|join(' ') }} + 蓝球 {{ ticket.blue|join(' ') }}
+  {% if tickets is defined %}
+    <h2>推荐号码列表：</h2>
+    <div class="ticket-list">
+      {% for ticket in tickets %}
+      <div class="ticket-item">
+        <div class="ticket-number">
+          红球 {{ ticket.red|join(' ') }}<br>
+          蓝球 {{ ticket.blue|join(' ') }}
+        </div>
+      </div>
+      {% endfor %}
     </div>
   {% endif %}
-  {% if message is defined and ticket is not defined %}
+  {% if message is defined and tickets is not defined %}
     <p><strong>{{ message }}</strong></p>
   {% endif %}
-
+  
   {% if mode == 'single' and red_stats is defined %}
   <div class="flex">
     <div>
@@ -168,34 +179,53 @@ def stats():
         red_stats=red_stats, blue_stats=blue_stats)
 
 
+
 @app.route('/recommend')
 def recommend():
     lucky = request.args.get('lucky')
-    # 验证格式
-    if not lucky or len(lucky) != 2 or not lucky.isdigit():
-        message = '请输入两位数字作为幸运数字，例如 05。'
-        return render_template_string(TEMPLATE, message=message, mode='')
+    try:
+        n = int(request.args.get('count', 1))
+    except ValueError:
+        n = 1
     df = pd.read_csv(DATA_FILE, dtype=str)
-    # 统计单号码频次
+    # 统计单号码和配对频次
     red_counts, blue_counts = count_number_frequency(df)
-    # 选择红球5个
-    reds = []
-    # 如果幸运在红区，先放入
-    if lucky in red_counts.index:
-        reds.append(lucky)
-    # 按出现次数降序选取其余
-    for num, _ in red_counts.sort_values(ascending=False).items():
-        if num not in reds and len(reds) < 5:
-            reds.append(num)
-    # 选择蓝球2个
-    blues = []
-    if lucky in blue_counts.index:
-        blues.append(lucky)
-    for num, _ in blue_counts.sort_values(ascending=False).items():
-        if num not in blues and len(blues) < 2:
-            blues.append(num)
-    ticket = {'red': reds, 'blue': blues}
-    return render_template_string(TEMPLATE, ticket=ticket, mode='', sort_by='')
+    red_pairs, blue_pairs = count_pair_frequency(df)
+    # 取前10热门
+    top_red_nums = list(red_counts.sort_values(ascending=False).head(10).index)
+    top_blue_nums = list(blue_counts.sort_values(ascending=False).head(10).index)
+    top_red_pairs = list(red_pairs.sort_values(ascending=False).head(10).index)
+    top_blue_pairs = list(blue_pairs.sort_values(ascending=False).head(10).index)
+
+    tickets = []
+    for i in range(n):
+        # 红区组合
+        red_comb = random.choice(top_red_pairs).split('-')
+        remaining_red = [num for num in top_red_nums if num not in red_comb]
+        red_rest = random.sample(remaining_red, 3)
+        reds = sorted(red_comb + red_rest)
+        # 蓝区组合
+        blue_comb = random.choice(top_blue_pairs).split('-')
+        blues = sorted(blue_comb)
+        if len(blues) < 2:
+            extra = [num for num in top_blue_nums if num not in blues]
+            blues += random.sample(extra, 2-len(blues))
+            blues = sorted(blues)
+        tickets.append({'red': reds, 'blue': blues})
+
+    # 确保至少一条包含幸运数字
+    if not any(str(lucky) in t['red']+t['blue'] for t in tickets):
+        idx = random.randrange(n)
+        # 强制将幸运号放入该票红区或蓝区
+        pick = tickets[idx]
+        if lucky in top_red_nums:
+            pick['red'][0] = lucky
+            pick['red'] = sorted(pick['red'])
+        else:
+            pick['blue'][0] = lucky
+            pick['blue'] = sorted(pick['blue'])
+
+    return render_template_string(TEMPLATE, tickets=tickets)
 
 
 if __name__=='__main__':
