@@ -2,6 +2,7 @@
 import requests, time
 import pandas as pd
 
+
 def fetch_dlt_with_prizes(game_no=85, province_id=0, page_size=30, max_pages=None, since_date=None):
     url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
     records = []
@@ -58,7 +59,6 @@ def fetch_dlt_with_prizes(game_no=85, province_id=0, page_size=30, max_pages=Non
                 rec[f"{lvl_name}中奖人数"] = int(level['stakeCount'].replace(',', ''))
             records.append(rec)
 
-
         page_no += 1
         if max_pages and page_no > max_pages:
             break
@@ -67,6 +67,7 @@ def fetch_dlt_with_prizes(game_no=85, province_id=0, page_size=30, max_pages=Non
 
     df = pd.DataFrame(records)
     return df
+
 
 if __name__ == "__main__":
     # 抓取示例（前2页）

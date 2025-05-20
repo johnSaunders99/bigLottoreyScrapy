@@ -119,10 +119,12 @@ TEMPLATE = '''
 </html>
 '''
 
+
 @app.route('/')
 def index():
     # 默认参数
     return render_template_string(TEMPLATE, mode='pair', sort_by='key')
+
 
 @app.route('/update', methods=['POST'])
 def update_data():
@@ -131,53 +133,60 @@ def update_data():
         df_local = pd.read_csv(DATA_FILE, dtype=str)
         first_issue = df_local.iloc[0]['issue']
     else:
-        df_local = pd.DataFrame(); first_issue = None
-    new_rows=[]; page=1
+        df_local = pd.DataFrame();
+        first_issue = None
+    new_rows = [];
+    page = 1
     while True:
-        result=fetch_dlt_with_prizes(page_size=30,page=page)
+        result = fetch_dlt_with_prizes(page_size=30, page=page)
         if result.empty: break
-        for _,r in result.iterrows():
-            if first_issue and r['issue']==first_issue:
-                page=None; break
+        for _, r in result.iterrows():
+            if first_issue and r['issue'] == first_issue:
+                page = None;
+                break
             new_rows.append(r)
         if page is None: break
-        page+=1
-    added=0
+        page += 1
+    added = 0
     if new_rows:
-        df_new=pd.DataFrame(new_rows).drop_duplicates(subset=['issue'])
-        df_merged=pd.concat([df_new,df_local],ignore_index=True)
-        df_merged.sort_values(by='issue',ascending=False,inplace=True)
-        df_merged.to_csv(DATA_FILE,index=False)
-        added=len(df_new)
-    message=f"更新完成，新增 {added} 条记录。"
+        df_new = pd.DataFrame(new_rows).drop_duplicates(subset=['issue'])
+        df_merged = pd.concat([df_new, df_local], ignore_index=True)
+        df_merged.sort_values(by='issue', ascending=False, inplace=True)
+        df_merged.to_csv(DATA_FILE, index=False)
+        added = len(df_new)
+    message = f"更新完成，新增 {added} 条记录。"
     return render_template_string(TEMPLATE, message=message, mode='pair', sort_by='key')
+
 
 @app.route('/stats')
 def stats():
-    start,end,mode,sort_by = request.args.get('start'),request.args.get('end'),request.args.get('mode','pair'),request.args.get('sort_by','key')
-    df=pd.read_csv(DATA_FILE,dtype=str);
-    df['日期']=pd.to_datetime(df['日期'],format='%Y-%m-%d')
-    if start: df=df[df['日期']>=pd.to_datetime(start)]
-    if end: df=df[df['日期']<=pd.to_datetime(end)]
+    start, end, mode, sort_by = request.args.get('start'), request.args.get('end'), request.args.get('mode',
+                                                                                                     'pair'), request.args.get(
+        'sort_by', 'key')
+    df = pd.read_csv(DATA_FILE, dtype=str);
+    df['日期'] = pd.to_datetime(df['日期'], format='%Y-%m-%d')
+    if start: df = df[df['日期'] >= pd.to_datetime(start)]
+    if end: df = df[df['日期'] <= pd.to_datetime(end)]
 
     # 获取统计结果
-    if mode=='single':
-        red_counts,blue_counts=count_number_frequency(df)
-        red=red_counts.items(); blue=blue_counts.items()
+    if mode == 'single':
+        red_counts, blue_counts = count_number_frequency(df)
+        red = red_counts.items();
+        blue = blue_counts.items()
     else:
-        red_counts,blue_counts=count_pair_frequency(df)
-        red=red_counts.items(); blue=blue_counts.items()
+        red_counts, blue_counts = count_pair_frequency(df)
+        red = red_counts.items();
+        blue = blue_counts.items()
     # 排序
-    if sort_by=='count':
-        red_stats=sorted(red,key=lambda x: x[1],reverse=True)
-        blue_stats=sorted(blue,key=lambda x: x[1],reverse=True)
+    if sort_by == 'count':
+        red_stats = sorted(red, key=lambda x: x[1], reverse=True)
+        blue_stats = sorted(blue, key=lambda x: x[1], reverse=True)
     else:
-        red_stats=sorted(red,key=lambda x: x[0])
-        blue_stats=sorted(blue,key=lambda x: x[0])
+        red_stats = sorted(red, key=lambda x: x[0])
+        blue_stats = sorted(blue, key=lambda x: x[0])
 
     return render_template_string(TEMPLATE, mode=mode, sort_by=sort_by,
-        red_stats=red_stats, blue_stats=blue_stats)
-
+                                  red_stats=red_stats, blue_stats=blue_stats)
 
 
 @app.route('/recommend')
@@ -209,12 +218,12 @@ def recommend():
         blues = sorted(blue_comb)
         if len(blues) < 2:
             extra = [num for num in top_blue_nums if num not in blues]
-            blues += random.sample(extra, 2-len(blues))
+            blues += random.sample(extra, 2 - len(blues))
             blues = sorted(blues)
         tickets.append({'red': reds, 'blue': blues})
 
     # 确保至少一条包含幸运数字
-    if not any(str(lucky) in t['red']+t['blue'] for t in tickets):
+    if not any(str(lucky) in t['red'] + t['blue'] for t in tickets):
         idx = random.randrange(n)
         # 强制将幸运号放入该票红区或蓝区
         pick = tickets[idx]
@@ -228,5 +237,5 @@ def recommend():
     return render_template_string(TEMPLATE, tickets=tickets)
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     app.run()
